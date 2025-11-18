@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import {
     Box, Typography, Grid, Paper, Card, CardContent, Table, TableBody,
-    TableCell, TableContainer, TableHead, TableRow, Button, Chip, IconButton,
+    TableCell, TableContainer, TableHead, TableRow, Chip, IconButton,
     Tooltip,
 } from '@mui/material';
 import PeopleIcon from '@mui/icons-material/People';
@@ -10,6 +10,7 @@ import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
+import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn'; // <-- CORRECTION: Added missing import
 
 // --- MOCK DATA for Admin Dashboard ---
 const MOCK_REPORTS = {
@@ -59,7 +60,7 @@ const AdminDashboard = ({ user }) => {
                 Admin Control Panel
             </Typography>
             <Typography variant="h6" color="text.secondary" sx={{ mb: 4 }}>
-                Welcome, {user.name}
+                Welcome, **{user.name}**
             </Typography>
 
             {/* 1. Overall Summary Statistics */}
@@ -102,7 +103,7 @@ const AdminDashboard = ({ user }) => {
                         </CardContent>
                     </Card>
                 </Grid>
-                 {/* Card 4: Total Courses */}
+                   {/* Card 4: Total Courses */}
                 <Grid item xs={12} sm={6} lg={3}>
                     <Card raised sx={{ borderLeft: '4px solid #9c27b0', height: '100%' }}>
                         <CardContent>
