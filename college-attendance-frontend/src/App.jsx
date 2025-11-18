@@ -2,10 +2,11 @@
 import React, { useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './components/LoginPage';
-// We will create these next: 
-import StudentDashboard from './components/AppLayout/StudentDashboard';
-import FacultyDashboard from './components/AppLayout/FacultyDashboard';
-import AdminDashboard from './components/AppLayout/AdminDashboard';
+// We will create these next:
+import AppLayout from './components/AppLayout'; 
+import StudentDashboard from './components/StudentDashboard';
+import FacultyDashboard from './components/FacultyDashboard';
+import AdminDashboard from './components/AdminDashboard';
 
 
 // Initial State structure for a non-authenticated user
