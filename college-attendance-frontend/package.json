@@ -4,7 +4,8 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "homepage": "https://github.com/prriyanshi2012006-droid/CollegeAttendanceSystem",
+  "homepage": "https://prriyanshi2012006-droid.github.io/CollegeAttendanceSystem/",
+
 
   "scripts": {
     "dev": "vite",
@@ -12,7 +13,7 @@
     "lint": "eslint .",
     "preview": "vite preview ",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d build"
+    "deploy": "gh-pages -d dist"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
