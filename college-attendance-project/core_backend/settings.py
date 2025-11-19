@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework_simplejwt',
     'attendance_app',       # 1. Our custom application
     'rest_framework',       # 2. Django Rest Framework for API building
     'corsheaders',          # 3. CORS headers for React communication
@@ -76,10 +77,20 @@ WSGI_APPLICATION = 'core_backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+# core_backend/settings.py
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'college_attendance_db',
+        'USER': 'root', 
+        'PASSWORD': '2204', 
+        'HOST': 'localhost', 
+        'PORT': '3306',
+        'OPTIONS': {
+        'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+        'charset': 'utf8mb4',
+        }
     }
 }
 
