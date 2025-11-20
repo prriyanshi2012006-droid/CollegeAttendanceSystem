@@ -1,43 +1,52 @@
 // src/components/StudentDashboard.jsx
-import React, { useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     Box, Typography, Grid, Paper, Card, CardContent, Table, TableBody,
     TableCell, TableContainer, TableHead, TableRow, LinearProgress,
+    CircularProgress, Alert
 } from '@mui/material';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import PercentIcon from '@mui/icons-material/Percent';
-
-// --- MOCK DATA for Student Dashboard ---
-const MOCK_STUDENT_DATA = {
-    id: 1001,
-    name: 'Alice Johnson',
-    course: 'Computer Science',
-    rollNumber: 'CS/2023/001',
-    overall: {
-        totalClasses: 120,
-        attendedClasses: 105,
-    },
-    detailedAttendance: [
-        { subject: 'Programming with Python', faculty: 'Prof. Vane', total: 40, attended: 38 },
-        { subject: 'Advanced Calculus', faculty: 'Dr. Doe', total: 30, attended: 25 },
-        { subject: 'Database Systems', faculty: 'Dr. Smith', total: 50, attended: 42 },
-    ]
-};
-
-// Helper function to calculate attendance percentage
-const calculatePercentage = (attended, total) => {
-    if (total === 0) return 0;
-    return (attended / total) * 100;
-};
+// --- NEW IMPORTS ---
+import { getStudentDashboard, calculatePercentage } from '../api/dataService'; 
 
 
 const StudentDashboard = ({ user }) => {
-    // In a real app (Phase 3), we would fetch this data based on user.id
-    // For now, we use the mock data structure above.
-    const studentData = MOCK_STUDENT_DATA; 
-    
+    // Initial state setup to mirror the expected API response structure
+    const [studentData, setStudentData] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    // --- EFFECT: Fetch Data on Mount ---
+    useEffect(() => {
+        const fetchDashboardData = async () => {
+            setIsLoading(true);
+            try {
+                // Fetch the data using the new service function
+                const data = await getStudentDashboard(user.id);
+                setStudentData(data);
+                setError(null);
+            } catch (err) {
+                console.error("Dashboard Fetch Error:", err);
+                setError(err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        if (user && user.role === 'student') {
+            fetchDashboardData();
+        } else {
+            // Handle case if component renders incorrectly
+            setError("User is not defined or not a student.");
+            setIsLoading(false);
+        }
+    }, [user]); // Re-run if user object changes
+
+    // Memoized calculation for overall percentage
     const overallPercentage = useMemo(() => {
+        if (!studentData || !studentData.overall) return 0;
         return calculatePercentage(studentData.overall.attendedClasses, studentData.overall.totalClasses);
     }, [studentData]);
 
@@ -48,18 +57,39 @@ const StudentDashboard = ({ user }) => {
         return 'error';
     };
 
+    // --- CONDITIONAL RENDERING ---
+
+    if (isLoading) {
+        return (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+                <CircularProgress />
+                <Typography sx={{ ml: 2 }}>Loading student records...</Typography>
+            </Box>
+        );
+    }
+    
+    if (error) {
+        return <Alert severity="error">Error loading dashboard: {error}</Alert>;
+    }
+    
+    if (!studentData) {
+        return <Alert severity="warning">No student data found for this user.</Alert>;
+    }
+
+
+    // Use the fetched data for rendering
     return (
         <Box sx={{ p: 2 }}>
             <Typography variant="h4" gutterBottom sx={{ fontWeight: 'bold' }}>
-                {studentData.name}'s Dashboard
+                {user.first_name || studentData.user.username}'s Dashboard
             </Typography>
             <Typography variant="subtitle1" color="text.secondary" sx={{ mb: 4 }}>
-                Roll No: {studentData.rollNumber} | Course: {studentData.course}
+                Roll No: {studentData.roll_number} | Course of Study: {studentData.course_of_study}
             </Typography>
 
             {/* 1. Summary Cards */}
             <Grid container spacing={3} sx={{ mb: 4 }}>
-                {/* Card 1: Total Classes */}
+                {/* Card 1: Total Classes (Uses MOCK data from service for now) */}
                 <Grid item xs={12} sm={4}>
                     <Card raised sx={{ borderLeft: '4px solid #4f46e5', height: '100%' }}>
                         <CardContent>
@@ -110,16 +140,16 @@ const StudentDashboard = ({ user }) => {
                 </Grid>
             </Grid>
 
-            {/* 2. Detailed Attendance Table */}
+            {/* 2. Detailed Attendance Table (Still uses mocked detailed data from service) */}
             <Paper elevation={3} sx={{ p: 3, borderRadius: 2 }}>
                 <Typography variant="h5" gutterBottom sx={{ mb: 3, fontWeight: 'medium' }}>
-                    Subject-wise Report
+                    Detailed Attendance Report (Mocked)
                 </Typography>
                 <TableContainer>
                     <Table stickyHeader aria-label="detailed attendance table">
                         <TableHead>
                             <TableRow sx={{ backgroundColor: '#f9fafb' }}>
-                                <TableCell sx={{ fontWeight: 'bold' }}>Subject Name</TableCell>
+                                <TableCell sx={{ fontWeight: 'bold' }}>Subject</TableCell>
                                 <TableCell sx={{ fontWeight: 'bold' }}>Faculty</TableCell>
                                 <TableCell align="right" sx={{ fontWeight: 'bold' }}>Total Classes</TableCell>
                                 <TableCell align="right" sx={{ fontWeight: 'bold' }}>Attended</TableCell>

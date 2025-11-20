@@ -2,36 +2,52 @@
 import React, { useState } from 'react';
 import {
     Container, TextField, Button, Typography, Card, CardContent,
-    FormControl, InputLabel, Select, MenuItem, Box, Alert
+    FormControl, InputLabel, Select, MenuItem, Box, Alert, CircularProgress
 } from '@mui/material';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
+// --- NEW IMPORT ---
+import { login, setAuthToken } from '../api/authService'; 
 
-// Mock User roles definition
-const MOCK_USER_ROLES = {
-    student: { id: 1001, name: 'Alice Johnson', role: 'student' },
-    faculty: { id: 201, name: 'Dr. Jane Doe', role: 'faculty' },
-    admin: { id: 301, name: 'Admin Master', role: 'admin' },
-};
 
-// NOTE: This function only performs MOCK authentication.
 const LoginPage = ({ setAuthState }) => {
-    const [username, setUsername] = useState('');
-    const [password, setPassword] = useState('');
+    const [username, setUsername] = useState('student'); // Default for quick testing
+    const [password, setPassword] = useState('pass'); // Default for quick testing
     const [role, setRole] = useState('student');
     const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false); // New loading state
 
-    const handleLogin = (e) => {
+    const handleLogin = async (e) => {
         e.preventDefault();
         setError('');
+        setIsLoading(true);
 
-        // Mock Credentials Check: Use role as username, 'pass' as password for simplicity
-        if (username.toLowerCase() === role && password === 'pass') {
-            const user = MOCK_USER_ROLES[role];
+        if (username.trim() === '' || password.trim() === '') {
+            setError('Please enter both username and password.');
+            setIsLoading(false);
+            return;
+        }
+
+        try {
+            // --- REAL API CALL ---
+            const user = await login(username, password);
             
-            // Set the global state to authenticated
+            // Check if the role matches the selected role (optional security/UI check)
+            if (user.role !== role) {
+                // If roles don't match, log out immediately and show error
+                setAuthToken(null);
+                throw `Login successful, but role mismatch. Logged in as ${user.role}.`;
+            }
+
+            // If successful, set the global state
             setAuthState({ user: user, isAuthenticated: true });
-        } else {
-            setError(`Invalid credentials. Try: (Username: ${role}, Password: pass)`);
+            
+        } catch (err) {
+            // Handle error response from Django/Axios
+            const errorMsg = typeof err === 'string' ? err : 
+                             (err.detail || 'Could not connect to the API. Check if Django server is running.');
+            setError(errorMsg);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -56,7 +72,12 @@ const LoginPage = ({ setAuthState }) => {
                                 labelId="role-select-label"
                                 value={role}
                                 label="Role"
-                                onChange={(e) => { setRole(e.target.value); setError(''); setUsername(e.target.value); }}
+                                onChange={(e) => { 
+                                    const newRole = e.target.value;
+                                    setRole(newRole); 
+                                    setError(''); 
+                                    setUsername(newRole); // Set username hint
+                                }}
                                 required
                             >
                                 <MenuItem value={'student'}>Student</MenuItem>
@@ -99,9 +120,10 @@ const LoginPage = ({ setAuthState }) => {
                             type="submit"
                             fullWidth
                             variant="contained"
+                            disabled={isLoading}
                             sx={{ mt: 3, mb: 2, py: 1.5, borderRadius: 2 }}
                         >
-                            Sign In
+                            {isLoading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
                         </Button>
                     </Box>
                 </CardContent>
