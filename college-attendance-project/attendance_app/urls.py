@@ -5,6 +5,8 @@ from .views import (
     LoginView, StudentDashboardView, FacultyClassListView, 
     MarkAttendanceView, CourseViewSet, FacultyViewSet
 )
+from rest_framework_simplejwt.views import TokenObtainPairView
+from .serializers import CustomTokenObtainPairSerializer
 
 # Create a router instance for viewsets (Admin management endpoints)
 router = DefaultRouter()

@@ -1,51 +1,96 @@
 // src/components/FacultyDashboard.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     Box, Typography, Paper, Button, Table, TableBody, TableCell,
-    TableContainer, TableHead, TableRow, Chip, Alert, Snackbar, Grid
+    TableContainer, TableHead, TableRow, Chip, Alert, Snackbar, Grid,
+    CircularProgress
 } from '@mui/material';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import SendIcon from '@mui/icons-material/Send';
-import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
+// --- NEW IMPORTS ---
+import { getFacultyClassList, submitAttendance } from '../api/dataService'; 
 
-// --- MOCK DATA for Faculty Attendance Sheet ---
-const MOCK_STUDENTS_FOR_CLASS = [
-    { studentId: 1001, name: 'Alice Johnson', status: 'Present' },
-    { studentId: 1002, name: 'Bob Smith', status: 'Present' },
-    { studentId: 1003, name: 'Charlie Brown', status: 'Absent' },
-    { studentId: 1004, name: 'Diana Prince', status: 'Present' },
-    { studentId: 1005, name: 'Ethan Hunt', status: 'Absent' },
-    { studentId: 1006, name: 'Fiona Glenn', status: 'Present' },
-];
 
 const FacultyDashboard = ({ user }) => {
-    const [attendanceList, setAttendanceList] = useState(MOCK_STUDENTS_FOR_CLASS);
+    const [attendanceList, setAttendanceList] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [snackbarOpen, setSnackbarOpen] = useState(false);
     const [snackbarMessage, setSnackbarMessage] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const classDetails = {
-        subject: user.subject || 'Programming with Python',
-        date: new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+        subject: user.department || 'Assigned Course', // Using department as subject mock
+        date: new Date().toISOString().split('T')[0], // YYYY-MM-DD format for API
+        displayDate: new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+        // WARNING: In a real app, faculty must select the course ID they are marking for.
+        // For simplicity, we hardcode a mock Course ID (e.g., 1) here.
+        courseId: 1, 
     };
 
+    // --- EFFECT: Fetch Class List on Mount ---
+    useEffect(() => {
+        const fetchClassList = async () => {
+            setIsLoading(true);
+            try {
+                // Fetch the list of students for this faculty's courses
+                const list = await getFacultyClassList();
+                setAttendanceList(list);
+                setError(null);
+            } catch (err) {
+                console.error("Faculty List Fetch Error:", err);
+                setError(err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        if (user && user.role === 'faculty') {
+            fetchClassList();
+        }
+    }, [user]);
+
+    // --- HANDLER: Toggle Attendance Status ---
     const toggleStatus = (studentId) => {
         setAttendanceList(prevList =>
             prevList.map(item =>
                 item.studentId === studentId
-                    ? { ...item, status: item.status === 'Present' ? 'Absent' : 'Present' }
+                    ? { ...item, status: item.status === 'P' ? 'A' : 'P' } // P or A for Django model
                     : item
             )
         );
     };
 
-    const handleMarkAttendance = () => {
-        // --- MOCK API CALL (Phase 3 will replace this with a real fetch) ---
-        const presentCount = attendanceList.filter(item => item.status === 'Present').length;
-        const totalCount = attendanceList.length;
+    // --- HANDLER: Submit Attendance ---
+    const handleMarkAttendance = async () => {
+        setIsSubmitting(true);
 
-        console.log('Mock API Call: Submitting attendance data...');
-        setSnackbarMessage(`Attendance submitted for ${classDetails.subject}. ${presentCount}/${totalCount} students marked Present.`);
-        setSnackbarOpen(true);
+        // Prepare data for the Django API (AttendanceRecordSerializer format)
+        const recordsToSubmit = attendanceList.map(item => ({
+            course_id: classDetails.courseId,
+            student_id: item.studentProfileId, // This must be the StudentProfile ID or object
+            date: classDetails.date,
+            status: item.status,
+        }));
+
+        try {
+            const result = await submitAttendance(recordsToSubmit);
+            setSnackbarMessage(result.message);
+            setSnackbarOpen(true);
+            
+            // Re-fetch or clear list if necessary after submission
+            // For now, we leave the list for review
+
+        } catch (err) {
+            console.error("Submission Error:", err);
+            const msg = Array.isArray(err) ? 
+                `Submission finished with errors for some records. Check console for details.` : 
+                `Submission failed: ${err}`;
+            setError(msg);
+
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleSnackbarClose = () => {
@@ -54,39 +99,59 @@ const FacultyDashboard = ({ user }) => {
 
     // Calculate summary stats
     const totalStudents = attendanceList.length;
-    const presentCount = attendanceList.filter(item => item.status === 'Present').length;
+    const presentCount = attendanceList.filter(item => item.status === 'P').length;
     const absentCount = totalStudents - presentCount;
     const attendancePercentage = totalStudents > 0 ? ((presentCount / totalStudents) * 100).toFixed(1) : 0;
+
+    // --- CONDITIONAL RENDERING ---
+    if (isLoading) {
+        return (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+                <CircularProgress />
+                <Typography sx={{ ml: 2 }}>Loading class list...</Typography>
+            </Box>
+        );
+    }
+    
+    if (error) {
+        return <Alert severity="error">Error: {error}</Alert>;
+    }
+    
+    if (attendanceList.length === 0) {
+        return <Alert severity="info">No students found in your assigned courses. Check database enrollment.</Alert>;
+    }
+
 
     return (
         <Box sx={{ p: 2 }}>
             <Typography variant="h4" gutterBottom sx={{ fontWeight: 'bold', mb: 1 }}>
-                Faculty Portal
+                Attendance Marking Portal
             </Typography>
             <Typography variant="h6" color="text.secondary" sx={{ mb: 4 }}>
-                {user.name} | Subject: {classDetails.subject}
+                {user.first_name || user.username} | Course ID: {classDetails.courseId} | Date: {classDetails.displayDate}
             </Typography>
 
+            {/* Summary Cards */}
             <Grid container spacing={3} sx={{ mb: 4 }}>
-                {/* Summary Card 1: Class Date */}
-                <Grid item xs={12} sm={4}>
-                    <Paper elevation={3} sx={{ p: 2, borderRadius: 2, borderTop: '4px solid #1976d2' }}>
-                        <Typography variant="subtitle1" color="text.secondary">Today's Date</Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 'medium' }}>{classDetails.date}</Typography>
-                    </Paper>
-                </Grid>
-                 {/* Summary Card 2: Attendance Rate */}
-                <Grid item xs={12} sm={4}>
+                {/* Summary Card 2: Attendance Rate */}
+                <Grid item xs={12} sm={6} lg={4}>
                     <Paper elevation={3} sx={{ p: 2, borderRadius: 2, borderTop: '4px solid #f97316' }}>
                         <Typography variant="subtitle1" color="text.secondary">Current Rate</Typography>
                         <Typography variant="h5" sx={{ fontWeight: 'medium' }}>{attendancePercentage}% Present</Typography>
                     </Paper>
                 </Grid>
                 {/* Summary Card 3: Total Students */}
-                <Grid item xs={12} sm={4}>
+                <Grid item xs={12} sm={6} lg={4}>
                     <Paper elevation={3} sx={{ p: 2, borderRadius: 2, borderTop: '4px solid #10b981' }}>
                         <Typography variant="subtitle1" color="text.secondary">Total Class Strength</Typography>
                         <Typography variant="h5" sx={{ fontWeight: 'medium' }}>{totalStudents}</Typography>
+                    </Paper>
+                </Grid>
+                 {/* Summary Card 4: Absent Count */}
+                <Grid item xs={12} sm={6} lg={4}>
+                    <Paper elevation={3} sx={{ p: 2, borderRadius: 2, borderTop: '4px solid #ef4444' }}>
+                        <Typography variant="subtitle1" color="text.secondary">Currently Absent</Typography>
+                        <Typography variant="h5" sx={{ fontWeight: 'medium' }}>{absentCount}</Typography>
                     </Paper>
                 </Grid>
             </Grid>
@@ -103,7 +168,7 @@ const FacultyDashboard = ({ user }) => {
                     <Table stickyHeader aria-label="attendance marking table">
                         <TableHead>
                             <TableRow sx={{ backgroundColor: '#f9fafb' }}>
-                                <TableCell sx={{ fontWeight: 'bold' }}>ID</TableCell>
+                                <TableCell sx={{ fontWeight: 'bold' }}>Roll No</TableCell>
                                 <TableCell sx={{ fontWeight: 'bold' }}>Student Name</TableCell>
                                 <TableCell align="center" sx={{ fontWeight: 'bold' }}>Current Status</TableCell>
                                 <TableCell align="center" sx={{ fontWeight: 'bold' }}>Action</TableCell>
@@ -112,12 +177,12 @@ const FacultyDashboard = ({ user }) => {
                         <TableBody>
                             {attendanceList.map((item) => (
                                 <TableRow key={item.studentId} hover>
-                                    <TableCell>{item.studentId}</TableCell>
+                                    <TableCell>{item.roll_number}</TableCell>
                                     <TableCell>{item.name}</TableCell>
                                     <TableCell align="center">
                                         <Chip
-                                            label={item.status}
-                                            color={item.status === 'Present' ? 'success' : 'error'}
+                                            label={item.status === 'P' ? 'Present' : 'Absent'}
+                                            color={item.status === 'P' ? 'success' : 'error'}
                                             variant="outlined"
                                             sx={{ minWidth: 80, fontWeight: 'medium' }}
                                         />
@@ -126,11 +191,11 @@ const FacultyDashboard = ({ user }) => {
                                         <Button
                                             variant="contained"
                                             size="small"
-                                            color={item.status === 'Present' ? 'error' : 'success'}
+                                            color={item.status === 'P' ? 'error' : 'success'}
                                             onClick={() => toggleStatus(item.studentId)}
                                             sx={{ borderRadius: 2 }}
                                         >
-                                            Mark {item.status === 'Present' ? 'Absent' : 'Present'}
+                                            Mark {item.status === 'P' ? 'Absent' : 'Present'}
                                         </Button>
                                     </TableCell>
                                 </TableRow>
@@ -143,12 +208,13 @@ const FacultyDashboard = ({ user }) => {
                     <Button
                         variant="contained"
                         color="primary"
-                        endIcon={<SendIcon />}
+                        endIcon={isSubmitting ? <CircularProgress size={20} color="inherit" /> : <SendIcon />}
                         onClick={handleMarkAttendance}
+                        disabled={isSubmitting}
                         size="large"
                         sx={{ py: 1.5, borderRadius: 2 }}
                     >
-                        Submit Attendance
+                        {isSubmitting ? 'Submitting...' : 'Submit Attendance'}
                     </Button>
                 </Box>
             </Paper>
