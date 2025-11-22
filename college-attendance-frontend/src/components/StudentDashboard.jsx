@@ -159,12 +159,17 @@ const StudentDashboard = ({ user }) => {
                         </TableHead>
                         <TableBody>
                             {studentData.detailedAttendance.map((row, index) => {
-                                const subjectPercent = calculatePercentage(row.attended, row.total);
+                                const totalHeld = row.total_classes_held; 
+                                const totalAttended = row.attended_classes;
+    
+                                const subjectPercent = calculatePercentage(totalAttended, totalHeld);
                                 const statusColor = subjectPercent >= 75 ? 'success' : 'error';
                                 return (
                                     <TableRow key={index} hover>
                                         <TableCell>{row.subject}</TableCell>
                                         <TableCell>{row.faculty}</TableCell>
+                                        <TableCell align="right">{totalHeld}</TableCell>
+                                        <TableCell align="right">{totalAttended}</TableCell>
                                         <TableCell align="right">{row.total}</TableCell>
                                         <TableCell align="right">{row.attended}</TableCell>
                                         <TableCell align="right">

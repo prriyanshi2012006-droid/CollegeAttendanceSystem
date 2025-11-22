@@ -15,4 +15,6 @@ urlpatterns = [
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/', include('attendance_app.urls')),
     path('', RedirectView.as_view(url='/admin/', permanent=False)),
+    path('api/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/', include('attendance_app.urls')),
 ]

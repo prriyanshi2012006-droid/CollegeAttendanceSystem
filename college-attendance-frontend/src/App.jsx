@@ -167,5 +167,13 @@ function App() {
     </Routes>
   );
 }
+// src/App.jsx (Inside the App function)
 
+useEffect(() => {
+    // Setup the interceptor only once when the app mounts
+    setupAxiosInterceptors(); 
+
+    // ... existing initial token check logic ...
+
+}, []);
 export default App;
