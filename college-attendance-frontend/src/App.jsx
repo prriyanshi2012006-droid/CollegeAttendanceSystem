@@ -10,7 +10,7 @@ function App() {
         id: 1,
         username: 'john_doe',
         first_name: 'John',
-        role: 'student', // Change to 'faculty' or 'admin' to test other dashboards
+        role: 'student', 
     });
 
     const handleLogout = () => {
