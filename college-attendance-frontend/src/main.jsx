@@ -5,7 +5,6 @@ import { BrowserRouter as Router } from 'react-router-dom';
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import App from './App.jsx';
 
-// 1. Define a basic MUI Theme (We'll use the default look for now)
 const theme = createTheme({
   palette: {
     primary: {
