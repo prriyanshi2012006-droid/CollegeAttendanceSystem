@@ -84,7 +84,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'college_attendance_db',
         'USER': 'root', 
-        'PASSWORD': '1226', 
+        'PASSWORD': '2204', 
         'HOST': 'localhost', 
         'PORT': '3306',
         'OPTIONS': {
