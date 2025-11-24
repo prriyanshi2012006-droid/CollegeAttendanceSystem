@@ -1,58 +1,98 @@
 // src/components/AdminDashboard.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Box, Typography, Grid, Paper, Card, CardContent, Table, TableBody,
-    TableCell, TableContainer, TableHead, TableRow, Chip, IconButton,
-    Tooltip,
+    TableCell, TableContainer, TableHead, TableRow, Button, Chip, IconButton,
+    Tooltip, CircularProgress, Alert
 } from '@mui/material';
 import PeopleIcon from '@mui/icons-material/People';
 import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
-import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn'; // <-- CORRECTION: Added missing import
-
-// --- MOCK DATA for Admin Dashboard ---
-const MOCK_REPORTS = {
-    totalStudents: 1200,
-    totalFaculty: 150,
-    averageAttendance: 82.5, // overall average percentage
-    courses: 15,
-};
-
-const MOCK_FACULTY_LIST = [
-    { id: 201, name: 'Dr. Jane Doe', dept: 'Mathematics', classes: 3, status: 'Active' },
-    { id: 202, name: 'Prof. Mark Vane', dept: 'Computer Science', classes: 5, status: 'Active' },
-    { id: 203, name: 'Dr. Emily Carter', dept: 'Electrical Eng.', classes: 4, status: 'Active' },
-    { id: 204, name: 'Mr. David Lee', dept: 'Mechanical Eng.', classes: 2, status: 'On Leave' },
-];
+import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
+// --- NEW IMPORTS ---
+import { getFacultyList, deleteFaculty, getCourseList, getAdminStats } from '../api/dataService'; 
 
 
 const AdminDashboard = ({ user }) => {
-    const [facultyList, setFacultyList] = useState(MOCK_FACULTY_LIST);
+    const [facultyList, setFacultyList] = useState([]);
+    const [courseList, setCourseList] = useState([]);
+    const [stats, setStats] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState(null);
 
-    // Mock Handler for Faculty Management
-    const handleEditFaculty = (id) => {
-        console.log(`Mock Action: Opening edit modal for Faculty ID: ${id}`);
-        alert(`MOCK: Editing Faculty ID ${id}. In Phase 3, a form would open here.`);
-    };
+    // --- EFFECT: Fetch All Admin Data on Mount ---
+    useEffect(() => {
+        const fetchAdminData = async () => {
+            setIsLoading(true);
+            try {
+                const [faculty, courses, adminStats] = await Promise.all([
+                    getFacultyList(),
+                    getCourseList(),
+                    getAdminStats()
+                ]);
+                
+                setFacultyList(faculty);
+                setCourseList(courses);
+                setStats(adminStats);
+                setError(null);
+            } catch (err) {
+                console.error("Admin Dashboard Fetch Error:", err);
+                setError(`Failed to load admin data: ${err}`);
+            } finally {
+                setIsLoading(false);
+            }
+        };
 
-    const handleDeleteFaculty = (id) => {
-        // In Phase 3, this would be an API call to Django
-        if (window.confirm(`Are you sure you want to delete faculty ID ${id}? (MOCK)`)) {
-            setFacultyList(prevList => prevList.filter(f => f.id !== id));
-            console.log(`Mock Action: Faculty ID ${id} deleted.`);
+        if (user && user.role === 'admin') {
+            fetchAdminData();
+        }
+    }, [user]); 
+
+    // --- HANDLER: Delete Faculty ---
+    const handleDeleteFaculty = async (id) => {
+        if (window.confirm(`Are you sure you want to permanently delete Faculty ID ${id}?`)) {
+            try {
+                await deleteFaculty(id);
+                // Update the state locally by filtering out the deleted faculty
+                setFacultyList(prevList => prevList.filter(f => f.id !== id));
+            } catch (err) {
+                setError(`Error deleting faculty: ${err}`);
+            }
         }
     };
     
-    // Mock Overall Departmental Attendance Report
-    const departmentalReport = [
-        { dept: 'Computer Science', avg: 88.2, compliance: 'High' },
-        { dept: 'Electrical Eng.', avg: 79.5, compliance: 'Moderate' },
-        { dept: 'Mechanical Eng.', avg: 65.1, compliance: 'Low' },
-        { dept: 'Mathematics', avg: 92.0, compliance: 'High' },
-    ];
+    // --- HANDLER: Mock Edit Function ---
+    const handleEditFaculty = (id) => {
+        alert(`MOCK: Editing Faculty ID ${id}. In a full application, a modal form would open here to PUT data back to /api/faculty/${id}/`);
+    };
+    
+    // --- HANDLER: Mock Edit Course Function ---
+    const handleEditCourse = (id) => {
+        alert(`MOCK: Editing Course ID ${id}. In a full application, a modal form would open here to PUT data back to /api/courses/${id}/`);
+    };
 
+    // --- CONDITIONAL RENDERING ---
+    if (isLoading) {
+        return (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', p: 4 }}>
+                <CircularProgress />
+                <Typography sx={{ mt: 2 }}>Loading administrator data...</Typography>
+            </Box>
+        );
+    }
+    
+    if (error) {
+        return <Alert severity="error">Error loading dashboard: {error}</Alert>;
+    }
+    
+    if (!stats) {
+        return <Alert severity="warning">No stats data found.</Alert>;
+    }
+
+    // Use stats for overall summary
+    const MOCK_REPORTS = stats;
 
     return (
         <Box sx={{ p: 2 }}>
@@ -60,7 +100,7 @@ const AdminDashboard = ({ user }) => {
                 Admin Control Panel
             </Typography>
             <Typography variant="h6" color="text.secondary" sx={{ mb: 4 }}>
-                Welcome, **{user.name}**
+                Welcome, {user.first_name || user.username}
             </Typography>
 
             {/* 1. Overall Summary Statistics */}
@@ -78,7 +118,7 @@ const AdminDashboard = ({ user }) => {
                     </Card>
                 </Grid>
 
-                {/* Card 2: Total Faculty */}
+                {/* Card 2: Total Faculty (REAL API DATA) */}
                 <Grid item xs={12} sm={6} lg={3}>
                     <Card raised sx={{ borderLeft: '4px solid #f97316', height: '100%' }}>
                         <CardContent>
@@ -103,7 +143,7 @@ const AdminDashboard = ({ user }) => {
                         </CardContent>
                     </Card>
                 </Grid>
-                   {/* Card 4: Total Courses */}
+                 {/* Card 4: Total Courses (REAL API DATA) */}
                 <Grid item xs={12} sm={6} lg={3}>
                     <Card raised sx={{ borderLeft: '4px solid #9c27b0', height: '100%' }}>
                         <CardContent>
@@ -116,11 +156,99 @@ const AdminDashboard = ({ user }) => {
                     </Card>
                 </Grid>
             </Grid>
+            
+            <Grid container spacing={4}>
+                {/* 2. Manage Faculty Table (REAL API DATA) */}
+                <Grid item xs={12} md={6}>
+                    <Paper elevation={3} sx={{ p: 3, borderRadius: 2 }}>
+                        <Typography variant="h5" gutterBottom sx={{ mb: 3, fontWeight: 'medium' }}>
+                            Manage Faculty Records
+                        </Typography>
+                        <TableContainer sx={{ maxHeight: 400 }}>
+                            <Table stickyHeader>
+                                <TableHead>
+                                    <TableRow sx={{ backgroundColor: '#f9fafb' }}>
+                                        <TableCell sx={{ fontWeight: 'bold' }}>ID</TableCell>
+                                        <TableCell sx={{ fontWeight: 'bold' }}>Name</TableCell>
+                                        <TableCell sx={{ fontWeight: 'bold' }}>Dept</TableCell>
+                                        <TableCell align="center" sx={{ fontWeight: 'bold' }}>Actions</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {facultyList.map((faculty) => (
+                                        <TableRow key={faculty.id} hover>
+                                            <TableCell>{faculty.id}</TableCell>
+                                            <TableCell>{faculty.first_name || faculty.username}</TableCell>
+                                            <TableCell>{faculty.department || 'N/A'}</TableCell>
+                                            <TableCell align="center">
+                                                <Tooltip title="Edit Faculty">
+                                                    <IconButton color="primary" onClick={() => handleEditFaculty(faculty.id)}>
+                                                        <EditIcon fontSize="small" />
+                                                    </IconButton>
+                                                </Tooltip>
+                                                <Tooltip title="Delete Faculty">
+                                                    <IconButton color="error" onClick={() => handleDeleteFaculty(faculty.id)}>
+                                                        <DeleteIcon fontSize="small" />
+                                                    </IconButton>
+                                                </Tooltip>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+                        <Button variant="contained" size="small" sx={{ mt: 2 }} onClick={() => alert("MOCK: Add Faculty modal open")}>Add New Faculty</Button>
+                    </Paper>
+                </Grid>
 
-            {/* 2. Departmental Report Table */}
-            <Paper elevation={3} sx={{ p: 3, borderRadius: 2, mb: 4 }}>
+                {/* 3. Manage Courses Table (REAL API DATA) */}
+                <Grid item xs={12} md={6}>
+                    <Paper elevation={3} sx={{ p: 3, borderRadius: 2 }}>
+                        <Typography variant="h5" gutterBottom sx={{ mb: 3, fontWeight: 'medium' }}>
+                            Manage Course Records
+                        </Typography>
+                        <TableContainer sx={{ maxHeight: 400 }}>
+                            <Table stickyHeader>
+                                <TableHead>
+                                    <TableRow sx={{ backgroundColor: '#f9fafb' }}>
+                                        <TableCell sx={{ fontWeight: 'bold' }}>Code</TableCell>
+                                        <TableCell sx={{ fontWeight: 'bold' }}>Title</TableCell>
+                                        <TableCell sx={{ fontWeight: 'bold' }}>Faculty</TableCell>
+                                        <TableCell align="center" sx={{ fontWeight: 'bold' }}>Actions</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {courseList.map((course) => (
+                                        <TableRow key={course.id} hover>
+                                            <TableCell>{course.course_code}</TableCell>
+                                            <TableCell>{course.title}</TableCell>
+                                            <TableCell>{course.faculty_name || 'Unassigned'}</TableCell>
+                                            <TableCell align="center">
+                                                <Tooltip title="Edit Course">
+                                                    <IconButton color="primary" onClick={() => handleEditCourse(course.id)}>
+                                                        <EditIcon fontSize="small" />
+                                                    </IconButton>
+                                                </Tooltip>
+                                                <Tooltip title="Delete Course">
+                                                    <IconButton color="error" onClick={() => handleDeleteFaculty(course.id)}>
+                                                        <DeleteIcon fontSize="small" />
+                                                    </IconButton>
+                                                </Tooltip>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+                        <Button variant="contained" size="small" sx={{ mt: 2 }} onClick={() => alert("MOCK: Add Course modal open")}>Add New Course</Button>
+                    </Paper>
+                </Grid>
+            </Grid>
+            
+            {/* 4. Departmental Report Table (STILL MOCKED) */}
+            <Paper elevation={3} sx={{ p: 3, borderRadius: 2, mt: 4 }}>
                 <Typography variant="h5" gutterBottom sx={{ mb: 3, fontWeight: 'medium' }}>
-                    Overall Departmental Attendance
+                    Overall Departmental Attendance (Mock Data)
                 </Typography>
                 <TableContainer>
                     <Table>
@@ -132,7 +260,7 @@ const AdminDashboard = ({ user }) => {
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {departmentalReport.map((row, index) => (
+                            {stats.departmentalReport.map((row, index) => (
                                 <TableRow key={index} hover>
                                     <TableCell>{row.dept}</TableCell>
                                     <TableCell align="right">{row.avg}%</TableCell>
@@ -150,55 +278,6 @@ const AdminDashboard = ({ user }) => {
                 </TableContainer>
             </Paper>
 
-            {/* 3. Manage Faculty Table */}
-            <Paper elevation={3} sx={{ p: 3, borderRadius: 2 }}>
-                <Typography variant="h5" gutterBottom sx={{ mb: 3, fontWeight: 'medium' }}>
-                    Manage Faculty Records
-                </Typography>
-                <TableContainer>
-                    <Table>
-                        <TableHead>
-                            <TableRow sx={{ backgroundColor: '#f9fafb' }}>
-                                <TableCell sx={{ fontWeight: 'bold' }}>ID</TableCell>
-                                <TableCell sx={{ fontWeight: 'bold' }}>Name</TableCell>
-                                <TableCell sx={{ fontWeight: 'bold' }}>Department</TableCell>
-                                <TableCell align="right" sx={{ fontWeight: 'bold' }}>Classes Assigned</TableCell>
-                                <TableCell align="center" sx={{ fontWeight: 'bold' }}>Status</TableCell>
-                                <TableCell align="center" sx={{ fontWeight: 'bold' }}>Actions</TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {facultyList.map((faculty) => (
-                                <TableRow key={faculty.id} hover>
-                                    <TableCell>{faculty.id}</TableCell>
-                                    <TableCell>{faculty.name}</TableCell>
-                                    <TableCell>{faculty.dept}</TableCell>
-                                    <TableCell align="right">{faculty.classes}</TableCell>
-                                    <TableCell align="center">
-                                        <Chip
-                                            label={faculty.status}
-                                            color={faculty.status === 'Active' ? 'success' : 'warning'}
-                                            size="small"
-                                        />
-                                    </TableCell>
-                                    <TableCell align="center">
-                                        <Tooltip title="Edit Faculty">
-                                            <IconButton color="primary" onClick={() => handleEditFaculty(faculty.id)}>
-                                                <EditIcon />
-                                            </IconButton>
-                                        </Tooltip>
-                                        <Tooltip title="Delete Faculty">
-                                            <IconButton color="error" onClick={() => handleDeleteFaculty(faculty.id)}>
-                                                <DeleteIcon />
-                                            </IconButton>
-                                        </Tooltip>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
-            </Paper>
         </Box>
     );
 };

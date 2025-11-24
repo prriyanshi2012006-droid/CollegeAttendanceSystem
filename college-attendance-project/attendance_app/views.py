@@ -1,4 +1,3 @@
-# attendance_app/views.py
 from rest_framework import generics, viewsets, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -7,17 +6,14 @@ from rest_framework.exceptions import PermissionDenied, NotFound
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from django.contrib.auth import authenticate
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 
 from .models import User, StudentProfile, Course, AttendanceRecord
 from .serializers import (
-    LoginSerializer, UserSerializer, StudentProfileSerializer, 
+    LoginSerializer, UserSerializer, StudentProfileSerializer,
     CourseSerializer, AttendanceRecordSerializer
 )
 
-# -------------------------
-# Login View (returns tokens + user)
-# -------------------------
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -34,7 +30,6 @@ class LoginView(APIView):
         refresh = RefreshToken.for_user(user)
         user_data = UserSerializer(user).data
 
-        # Add student profile info if student
         if getattr(user, 'role', None) == 'student':
             try:
                 profile = StudentProfile.objects.get(user=user)
@@ -43,15 +38,8 @@ class LoginView(APIView):
             except StudentProfile.DoesNotExist:
                 pass
 
-        return Response({
-            'refresh': str(refresh),
-            'access': str(refresh.access_token),
-            'user': user_data,
-        }, status=status.HTTP_200_OK)
+        return Response({'refresh': str(refresh), 'access': str(refresh.access_token), 'user': user_data}, status=status.HTTP_200_OK)
 
-# -------------------------
-# Student Dashboard View
-# -------------------------
 class StudentDashboardView(generics.RetrieveAPIView):
     serializer_class = StudentProfileSerializer
     permission_classes = [IsAuthenticated]
@@ -69,9 +57,6 @@ class StudentDashboardView(generics.RetrieveAPIView):
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
-# -------------------------
-# Faculty / Attendance / Admin endpoints (unchanged logic)
-# -------------------------
 class FacultyClassListView(generics.ListAPIView):
     serializer_class = StudentProfileSerializer
     permission_classes = [IsAuthenticated]
@@ -100,38 +85,66 @@ class MarkAttendanceView(APIView):
         errors = []
 
         for record in attendance_data:
-            record['course'] = record.get('course_id')
-            record['student'] = record.get('student_id')
-            record['date'] = record.get('date')
-            record['status'] = record.get('status')
+            incoming_course_id = record.get('course_id') or record.get('course')
+            incoming_student_id = record.get('student_id') or record.get('student')
+            record_date = record.get('date')
+            record_status = record.get('status')
 
-            serializer = AttendanceRecordSerializer(data=record)
-            if serializer.is_valid():
+            if not incoming_course_id:
+                errors.append("Missing course_id in a record.")
+                continue
+            if not incoming_student_id:
+                errors.append("Missing student_id in a record.")
+                continue
+            if not record_date:
+                errors.append("Missing date in a record.")
+                continue
+            if not record_status or str(record_status).upper() not in ('P', 'A'):
+                errors.append(f"Invalid status '{record_status}'. Use 'P' or 'A'.")
+                continue
+
+            record_status = str(record_status).upper()
+
+            try:
+                course_obj = Course.objects.get(pk=int(incoming_course_id))
+            except Exception as e:
+                errors.append(f"Course not found for id={incoming_course_id}: {e}")
+                continue
+
+            if not Course.objects.filter(id=course_obj.id, faculty=request.user).exists():
+                errors.append(f"Faculty not authorized to mark attendance for Course ID {course_obj.id}")
+                continue
+
+            student_profile = None
+            try:
+                student_profile = StudentProfile.objects.get(pk=int(incoming_student_id))
+            except Exception:
                 try:
-                    course_id = serializer.validated_data['course'].id
-                    if not Course.objects.filter(id=course_id, faculty=request.user).exists():
-                        errors.append(f"Faculty not authorized to mark attendance for Course ID {course_id}")
-                        continue
-
-                    AttendanceRecord.objects.update_or_create(
-                        course=serializer.validated_data['course'],
-                        student=serializer.validated_data['student'],
-                        date=serializer.validated_data['date'],
-                        defaults={'status': serializer.validated_data['status']}
-                    )
-                    successful_saves += 1
-                except IntegrityError as e:
-                    errors.append(f"Database error saving record: {e}")
+                    student_profile = StudentProfile.objects.get(user__id=int(incoming_student_id))
                 except Exception as e:
-                    errors.append(f"Unexpected error saving record: {e}")
-            else:
-                errors.append(f"Validation failed for record: {serializer.errors}")
+                    errors.append(f"StudentProfile not found for identifier={incoming_student_id}: {e}")
+                    continue
+
+            try:
+                with transaction.atomic():
+                    obj, created = AttendanceRecord.objects.update_or_create(
+                        course=course_obj,
+                        student=student_profile,
+                        date=record_date,
+                        defaults={'status': record_status}
+                    )
+                successful_saves += 1
+            except IntegrityError as e:
+                errors.append(f"Database IntegrityError saving record for course={course_obj.id}, student={student_profile.pk}, date={record_date}: {e}")
+            except Exception as e:
+                errors.append(f"Unexpected error saving record for course={course_obj.id}, student={student_profile.pk}, date={record_date}: {e}")
 
         if errors:
             return Response({
                 "message": f"Successfully processed {successful_saves} records. Errors encountered: {len(errors)}",
                 "errors": errors
             }, status=status.HTTP_207_MULTI_STATUS)
+
         return Response({"message": f"Successfully marked attendance for {successful_saves} students."}, status=status.HTTP_201_CREATED)
 
 class CourseViewSet(viewsets.ModelViewSet):
