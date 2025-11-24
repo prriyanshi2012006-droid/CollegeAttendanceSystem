@@ -14,23 +14,30 @@ from .serializers import (
     CourseSerializer, AttendanceRecordSerializer
 )
 
+
+# ------------------------------
+# 1. LOGIN VIEW
+# ------------------------------
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
         username = serializer.validated_data['username']
         password = serializer.validated_data['password']
 
         user = authenticate(username=username, password=password)
-        if user is None:
-            return Response({'detail': 'Invalid credentials or user not found.'}, status=status.HTTP_401_UNAUTHORIZED)
+        if not user:
+            return Response({'detail': 'Invalid credentials or user not found.'},
+                            status=status.HTTP_401_UNAUTHORIZED)
 
         refresh = RefreshToken.for_user(user)
         user_data = UserSerializer(user).data
 
-        if getattr(user, 'role', None) == 'student':
+        # Add student-specific info
+        if user.role == 'student':
             try:
                 profile = StudentProfile.objects.get(user=user)
                 user_data['roll_number'] = profile.roll_number
@@ -38,134 +45,160 @@ class LoginView(APIView):
             except StudentProfile.DoesNotExist:
                 pass
 
-        return Response({'refresh': str(refresh), 'access': str(refresh.access_token), 'user': user_data}, status=status.HTTP_200_OK)
+        return Response({
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+            'user': user_data
+        }, status=status.HTTP_200_OK)
 
+
+# ------------------------------
+# 2. STUDENT DASHBOARD VIEW
+# ------------------------------
 class StudentDashboardView(generics.RetrieveAPIView):
     serializer_class = StudentProfileSerializer
     permission_classes = [IsAuthenticated]
 
     def get_object(self):
-        if getattr(self.request.user, 'role', None) != 'student':
+        if self.request.user.role != 'student':
             raise PermissionDenied("Access denied. Not a student.")
         try:
             return StudentProfile.objects.get(user=self.request.user)
         except StudentProfile.DoesNotExist:
             raise NotFound("Student profile not found for the authenticated user.")
 
-    def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        return Response(serializer.data)
 
+# ------------------------------
+# 3. FACULTY CLASS LIST VIEW
+# ------------------------------
 class FacultyClassListView(generics.ListAPIView):
     serializer_class = StudentProfileSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        if getattr(self.request.user, 'role', None) != 'faculty':
+        if self.request.user.role != 'faculty':
             return StudentProfile.objects.none()
+        # Get courses assigned to this faculty
         assigned_courses = Course.objects.filter(faculty=self.request.user)
+        # Get student IDs enrolled in these courses
         student_ids = StudentProfile.enrolled_courses.through.objects.filter(
             course__in=assigned_courses
         ).values_list('studentprofile_id', flat=True).distinct()
         return StudentProfile.objects.filter(pk__in=student_ids).select_related('user')
 
+
+# ------------------------------
+# 4. MARK ATTENDANCE VIEW
+# ------------------------------
 class MarkAttendanceView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        if getattr(request.user, 'role', None) != 'faculty':
-            return Response({"detail": "Permission denied. Only faculty can mark attendance."}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role != 'faculty':
+            return Response({"detail": "Permission denied. Only faculty can mark attendance."},
+                            status=status.HTTP_403_FORBIDDEN)
 
         attendance_data = request.data
         if not isinstance(attendance_data, list):
-            return Response({"detail": "Invalid data format. Expected a list of records."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Invalid data format. Expected a list of records."},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         successful_saves = 0
         errors = []
 
         for record in attendance_data:
-            incoming_course_id = record.get('course_id') or record.get('course')
-            incoming_student_id = record.get('student_id') or record.get('student')
+            course_id = record.get('course_id') or record.get('course')
+            student_id = record.get('student_id') or record.get('student')
             record_date = record.get('date')
-            record_status = record.get('status')
+            status_value = record.get('status')
 
-            if not incoming_course_id:
-                errors.append("Missing course_id in a record.")
+            # Validation
+            if not course_id or not student_id or not record_date:
+                errors.append(f"Missing fields in record: {record}")
                 continue
-            if not incoming_student_id:
-                errors.append("Missing student_id in a record.")
+            if str(status_value).upper() not in ('P', 'A'):
+                errors.append(f"Invalid status '{status_value}'. Use 'P' or 'A'.")
                 continue
-            if not record_date:
-                errors.append("Missing date in a record.")
-                continue
-            if not record_status or str(record_status).upper() not in ('P', 'A'):
-                errors.append(f"Invalid status '{record_status}'. Use 'P' or 'A'.")
-                continue
-
-            record_status = str(record_status).upper()
+            status_value = str(status_value).upper()
 
             try:
-                course_obj = Course.objects.get(pk=int(incoming_course_id))
-            except Exception as e:
-                errors.append(f"Course not found for id={incoming_course_id}: {e}")
+                course_obj = Course.objects.get(pk=course_id)
+            except Course.DoesNotExist:
+                errors.append(f"Course not found for id={course_id}")
                 continue
 
-            if not Course.objects.filter(id=course_obj.id, faculty=request.user).exists():
-                errors.append(f"Faculty not authorized to mark attendance for Course ID {course_obj.id}")
+            if course_obj.faculty != request.user:
+                errors.append(f"Faculty not authorized to mark attendance for course ID {course_id}")
                 continue
 
-            student_profile = None
             try:
-                student_profile = StudentProfile.objects.get(pk=int(incoming_student_id))
-            except Exception:
+                student_profile = StudentProfile.objects.get(pk=student_id)
+            except StudentProfile.DoesNotExist:
                 try:
-                    student_profile = StudentProfile.objects.get(user__id=int(incoming_student_id))
-                except Exception as e:
-                    errors.append(f"StudentProfile not found for identifier={incoming_student_id}: {e}")
+                    student_profile = StudentProfile.objects.get(user__id=student_id)
+                except StudentProfile.DoesNotExist:
+                    errors.append(f"StudentProfile not found for id={student_id}")
                     continue
 
             try:
                 with transaction.atomic():
-                    obj, created = AttendanceRecord.objects.update_or_create(
+                    AttendanceRecord.objects.update_or_create(
                         course=course_obj,
                         student=student_profile,
                         date=record_date,
-                        defaults={'status': record_status}
+                        defaults={'status': status_value}
                     )
                 successful_saves += 1
             except IntegrityError as e:
-                errors.append(f"Database IntegrityError saving record for course={course_obj.id}, student={student_profile.pk}, date={record_date}: {e}")
+                errors.append(f"DB error for course={course_id}, student={student_profile.pk}, date={record_date}: {e}")
             except Exception as e:
-                errors.append(f"Unexpected error saving record for course={course_obj.id}, student={student_profile.pk}, date={record_date}: {e}")
+                errors.append(f"Unexpected error for course={course_id}, student={student_profile.pk}, date={record_date}: {e}")
 
-        if errors:
-            return Response({
-                "message": f"Successfully processed {successful_saves} records. Errors encountered: {len(errors)}",
-                "errors": errors
-            }, status=status.HTTP_207_MULTI_STATUS)
+        return Response({
+            "message": f"Successfully processed {successful_saves} records. Errors: {len(errors)}",
+            "errors": errors
+        }, status=status.HTTP_207_MULTI_STATUS if errors else status.HTTP_201_CREATED)
 
-        return Response({"message": f"Successfully marked attendance for {successful_saves} students."}, status=status.HTTP_201_CREATED)
 
+# ------------------------------
+# 5. COURSE VIEWSET (ADMIN ONLY)
+# ------------------------------
 class CourseViewSet(viewsets.ModelViewSet):
     queryset = Course.objects.all().select_related('faculty')
     serializer_class = CourseSerializer
     permission_classes = [IsAuthenticated]
 
     def check_permissions(self, request):
-        if getattr(request.user, 'role', None) != 'admin':
+        if request.user.role != 'admin':
             self.permission_denied(request, message="Only Admins can manage courses.")
         return super().check_permissions(request)
 
+
+# ------------------------------
+# 6. FACULTY VIEWSET (ADMIN ONLY)
+# ------------------------------
 class FacultyViewSet(viewsets.ModelViewSet):
     queryset = User.objects.filter(role='faculty')
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
 
     def check_permissions(self, request):
-        if getattr(request.user, 'role', None) != 'admin':
+        if request.user.role != 'admin':
             self.permission_denied(request, message="Only Admins can manage faculty.")
         return super().check_permissions(request)
 
     def perform_create(self, serializer):
         serializer.save(role='faculty')
+
+
+# ------------------------------
+# 7. OPTIONAL: FACULTY PROFILE VIEW
+# ------------------------------
+class FacultyProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != 'faculty':
+            raise PermissionDenied("Not a faculty member")
+        data = UserSerializer(request.user).data
+        return Response(data)

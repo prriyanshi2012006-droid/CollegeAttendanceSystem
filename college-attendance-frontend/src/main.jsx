@@ -1,4 +1,3 @@
-// src/main.jsx
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter as Router } from 'react-router-dom';
@@ -8,7 +7,7 @@ import App from './App.jsx';
 const theme = createTheme({
   palette: {
     primary: {
-      main: '#4f46e5', // A nice indigo color for the primary theme
+      main: '#4f46e5', // Indigo
     },
   },
 });
@@ -17,10 +16,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <Router>
       <ThemeProvider theme={theme}>
-        {/* CssBaseline is MUI's standard CSS reset */}
-        <CssBaseline /> 
+        <CssBaseline />
         <App />
       </ThemeProvider>
     </Router>
-  </React.StrictMode>,
+  </React.StrictMode>
 );

@@ -73,6 +73,7 @@ export const setupAxiosInterceptors = () => {
           const newAccessToken = await refreshAccessToken();
           originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
           return axios(originalRequest);
+        // eslint-disable-next-line no-unused-vars
         } catch (e) {
           return Promise.reject(error);
         }
